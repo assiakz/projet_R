@@ -1,0 +1,12 @@
+name: projet_R
+title: projet_R
+username:
+account: steventan
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 1610641
+bundleId: 2679606
+url: https://steventan.shinyapps.io/projet_R/
+when: 1576710732.5995
+asMultiple: FALSE
+asStatic: FALSE

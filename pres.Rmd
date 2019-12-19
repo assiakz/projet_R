@@ -1,0 +1,103 @@
+---
+title: "pres"
+author: "Steven Tan"
+date: "19 décembre 2019"
+output: html_document
+---
+
+```{r setup, include=FALSE, echo=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(shinydashboard)
+library(shiny)
+library(dplyr)
+library(tm)
+library(stringr)
+library(tidyr)
+library(leaflet)
+library(plotrix)
+library(ggplot2)
+library(wordcloud)
+library(flexdashboard)
+
+trains <- read.csv("full_trains.csv", stringsAsFactors = FALSE)
+airports <- read.csv("airports.csv", stringsAsFactors = FALSE, nrows = 1000)
+flights <- read.csv("flights-sample.csv", stringsAsFactors = FALSE)
+airlines <- read.csv("airlines.csv", stringsAsFactors = FALSE, nrows = 1000)
+
+flights$date <- as.Date(with(flights, paste(YEAR, MONTH, DAY,sep="-")), "%Y-%m-%d")
+
+t = select(.data = flights, origin = "ORIGIN_AIRPORT", dest = "DESTINATION_AIRPORT")
+airports_new = select(.data = airports, airport = "IATA_CODE", lat = "LATITUDE", lon = "LONGITUDE")
+airlines = select(.data = airlines, code = "IATA_CODE", airline = "AIRLINE")
+flights_latlon <- t %>% inner_join(select(.data = airports_new, origin = airport, origin_lat = lat, origin_lon = lon), 
+                                   by = "origin") %>% 
+  inner_join(select(.data = airports_new, dest = airport, dest_lat = lat, dest_lon = lon), 
+             by = "dest")
+flights$AIRLINES <- airlines$airline[match(flights$AIRLINE, airlines$code)]
+flights$city <- airports$CITY[match(flights$DESTINATION_AIRPORT, airports$IATA_CODE)]
+
+flightss <- flights
+flightss$ARRIVAL_TIME <- format(strptime(sprintf('%04d', flightss$ARRIVAL_TIME), format='%H%M'), '%H:%M')
+flightss$DEPARTURE_TIME <- format(strptime(sprintf('%04d', flightss$DEPARTURE_TIME), format='%H%M'), '%H:%M')
+flightss$ARRIVAL_TIME <- as.POSIXlt(as.character(flightss$ARRIVAL_TIME), format = "%H:%M")
+flightss$DEPARTURE_TIME <- as.POSIXlt(as.character(flightss$DEPARTURE_TIME), format = "%H:%M")
+
+flights_latlon <- head(flights_latlon,100)
+data <- sum(trains$total_num_trips)
+```
+
+```{r, echo=FALSE}
+print("Trains dashboard")
+print("Pie plot proportion of delay causes")
+renderPlot({
+    ext = mean(trains[!is.na(trains$delay_cause_external_cause),]$delay_cause_external_cause)
+    rail = mean(trains[!is.na(trains$delay_cause_rail_infrastructure),]$delay_cause_rail_infrastructure)
+    traffic = mean(trains[!is.na(trains$delay_cause_traffic_management),]$delay_cause_traffic_management)
+    rolling = mean(trains[!is.na(trains$delay_cause_rolling_stock),]$delay_cause_rolling_stock)
+    station = mean(trains[!is.na(trains$delay_cause_station_management),]$delay_cause_station_management)
+    travelers = mean(trains[!is.na(trains$delay_cause_travelers),]$delay_cause_travelers)
+    myPalette <- brewer.pal(5, "Set2") 
+    
+    slices <- c(ext, rail, traffic, rolling, station, travelers)
+    lbls <- c("External", "Rail Infrastructure", "Traffic management", "Rolling stock", "Station management", "Travelers")
+    pie(slices, labels = lbls, main="Proportion of delay causes", col=myPalette, border="white")
+  },bg="#ecf0f5")
+
+print("Wordcloud of top 10 destinations in trains")
+
+renderPlot({
+    set.seed(155864)
+    temp <- table(trains$arrival_station)
+    wordcloud(names(temp),as.numeric(temp), max.words = 10, colors = brewer.pal(8, "Dark2"), scale=c(3,.5))
+  }, bg = "#ecf0f5")
+
+print("Bar plot evolution of the total journey time by departure station")
+renderPlot({
+    ggplot(data = trains, aes(x=departure_station, y=journey_time_avg, fill=departure_station)) +
+      geom_bar( stat="identity",show.legend = FALSE) + theme(axis.text.x=element_text(angle=90,hjust=1,vjust=0.5))
+  })
+
+```
+
+```{r, echo=FALSE}
+print("Box plot evolution of departure delay by date")
+renderPlot({
+    boxplot(flights$DEPARTURE_DELAY ~ reorder(format(flights$date,'%b %y'),flights$date), outline = FALSE)
+  })
+
+print("Map of the flights and airports")
+renderLeaflet({
+    m <- leaflet() %>%
+      addTiles() %>%  # Add default OpenStreetMap map tiles
+      addCircleMarkers(lng=airports$LONGITUDE, lat=airports$LATITUDE, radius = 1, label = airports$AIRPORT) %>%
+      addPolylines(weight = 0.3, opacity = 0.5, color = "#820a0a", lat=c(flights_latlon$origin_lat,flights_latlon$dest_lat), 
+                   lng=c(flights_latlon$origin_lon, flights_latlon$dest_lon))
+  })
+print("Wordcloud of top 10 destinations in flights")
+
+renderPlot({
+    set.seed(1552131)
+    temp <- table(flights$city)
+    wordcloud(names(temp),as.numeric(temp), max.words = 10, colors = brewer.pal(8, "Dark2"), scale=c(3,.5))
+  }, bg = "#ecf0f5")
+```
